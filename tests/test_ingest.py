@@ -113,3 +113,58 @@ def test_sync_skips_stale_draft_when_customer_wrote_again(
     assert rows == [("skipped", "Old reply"), ("needs_review", "New reply")]
     assert stats.drafts_skipped == 1
     assert stats.drafts_created == 1
+
+
+def test_sync_keeps_active_draft_when_still_fresh(
+    tmp_path, monkeypatch
+):
+    from app import ingest
+
+    conn = init_db(str(tmp_path / "test.db"))
+    conn.execute(
+        "INSERT INTO conversations (id) VALUES ('conv-1')"
+    )
+    conn.execute(
+        """
+        INSERT INTO drafts (
+            id, conversation_id, status, draft_text, created_at, updated_at
+        )
+        VALUES (
+            'fresh-draft', 'conv-1', 'needs_review', 'Current reply',
+            '2026-08-06T10:01:00+00:00', '2026-08-06T10:01:00+00:00'
+        )
+        """
+    )
+    client = FakeClient(
+        [
+            {
+                "id": "conv-1",
+                "status": "OPEN",
+                "channel": "email",
+                "messages": [
+                    {
+                        "direction": "inbound",
+                        "body": "Where is my order?",
+                        "created_at": "2026-08-06T10:00:00+00:00",
+                    }
+                ],
+            }
+        ]
+    )
+    monkeypatch.setattr(ingest, "search_similar", lambda *args, **kwargs: [])
+    monkeypatch.setattr(ingest, "load_faq_chunks", lambda *args: [])
+
+    def should_not_generate(**kwargs):
+        raise AssertionError("generate_draft should not be called")
+
+    monkeypatch.setattr(ingest, "generate_draft", should_not_generate)
+
+    stats = ingest.sync_once(conn, client, Settings())
+
+    rows = conn.execute(
+        "SELECT status, draft_text FROM drafts"
+    ).fetchall()
+    assert rows == [("needs_review", "Current reply")]
+    assert len(rows) == 1
+    assert stats.drafts_created == 0
+    assert stats.drafts_skipped == 0

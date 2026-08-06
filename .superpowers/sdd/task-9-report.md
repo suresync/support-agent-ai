@@ -1,17 +1,13 @@
-# Task 9 report: Ingest + draft enqueue
+## Review finding fix: fresh active draft guard
 
-## Implemented
+**Finding:** Missing test for the branch where an active `needs_review` draft has `created_at` after the latest customer message — `sync_once` should skip draft generation.
 
-- Added `sync_once(conn, client, settings) -> SyncStats` for recent OPEN conversations.
-- Normalized Richpanel list/detail payloads, filtered non-email channels, and upserted conversation snapshots.
-- Added transcript extraction, customer-message timestamps, language detection, FAQ loading, memory search, and draft generation.
-- Reused current `needs_review` drafts and replaced stale drafts after newer customer messages.
-- Stored generated drafts as `needs_review` with model, confidence, note, and prompt metadata.
+**Fix:** Added `test_sync_keeps_active_draft_when_still_fresh` in `tests/test_ingest.py`.
 
-## TDD and verification
+**Scenario:**
+- Pre-seeded `needs_review` draft at `2026-08-06T10:01:00+00:00`
+- Latest customer message at `2026-08-06T10:00:00+00:00` (older than draft)
+- `sync_once` creates 0 new drafts, draft count stays 1, `drafts_created == 0`
+- `generate_draft` is not invoked (AssertionError guard)
 
-- Added the one-open-ticket test first and observed it fail because `app.ingest` did not exist.
-- Added stale-draft replacement coverage.
-- Ingest tests: `2 passed`.
-- Full test suite: `21 passed`.
-- IDE lint diagnostics: no errors in changed Python files.
+**Tests:** `pytest tests/test_ingest.py` — 3 passed; full suite — 23 passed.
