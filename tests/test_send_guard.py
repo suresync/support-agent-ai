@@ -1,3 +1,5 @@
+import pytest
+
 from app import embeddings
 from app.db import init_db
 from app.sender import approve_and_send
@@ -17,7 +19,7 @@ class FakeClient:
         return {"id": "message-1"}
 
 
-def _setup_db(tmp_path, *, edited_text=None):
+def _setup_db(tmp_path, *, edited_text=None, status="needs_review"):
     conn = init_db(str(tmp_path / "test.db"))
     conn.execute(
         """
@@ -37,7 +39,7 @@ def _setup_db(tmp_path, *, edited_text=None):
         (
             "draft-1",
             "conv-1",
-            "needs_review",
+            status,
             "We will resend the yarn.",
             edited_text,
             "2026-08-06T10:00:00+00:00",
@@ -84,6 +86,40 @@ def test_dry_run_does_not_call_send(tmp_path, monkeypatch):
     assert conn.execute(
         "SELECT status FROM drafts WHERE id = 'draft-1'"
     ).fetchone()[0] == "sent_simulated"
+
+
+@pytest.mark.parametrize("status", ["sent", "sent_simulated"])
+def test_reapprove_sent_draft_does_not_send(tmp_path, status):
+    conn = _setup_db(tmp_path, status=status)
+    client = FakeClient({"id": "conv-1", "messages": []})
+
+    result = approve_and_send(conn, client, "draft-1", dry_run=False)
+
+    assert result.ok is False
+    assert result.status == status
+    assert client.send_calls == []
+
+
+def test_send_failure_returns_draft_to_review(tmp_path):
+    class FailingClient(FakeClient):
+        def send_message(self, conversation_id, body):
+            self.send_calls.append((conversation_id, body))
+            raise RuntimeError("Richpanel unavailable")
+
+    conn = _setup_db(tmp_path)
+    client = FailingClient({"id": "conv-1", "messages": []})
+
+    result = approve_and_send(conn, client, "draft-1", dry_run=False)
+
+    status, error_message = conn.execute(
+        "SELECT status, error_message FROM drafts WHERE id = 'draft-1'"
+    ).fetchone()
+    assert result.ok is False
+    assert result.status == "needs_review"
+    assert result.error == "Richpanel unavailable"
+    assert client.send_calls == [("conv-1", "We will resend the yarn.")]
+    assert status == "needs_review"
+    assert error_message == "Richpanel unavailable"
 
 
 def test_approve_writes_memory(tmp_path, monkeypatch):

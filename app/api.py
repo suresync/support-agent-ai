@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from app.config import Settings, get_settings
-from app.db import init_db
+from app.db import init_db, log_audit
 from app.draft_agent import generate_draft
 from app.faq import load_faq_chunks
 from app.ingest import _transcript, sync_once
@@ -180,11 +180,18 @@ def create_app(
         status: str,
         *,
         reason: str | None = None,
+        audit_action: str | None = None,
     ) -> dict[str, Any]:
         conn = connection()
         try:
+            row = conn.execute(
+                "SELECT conversation_id FROM drafts WHERE id = ?",
+                (draft_id,),
+            ).fetchone()
+            if row is None:
+                raise HTTPException(404, "Draft not found")
             now = _now()
-            cursor = conn.execute(
+            conn.execute(
                 """
                 UPDATE drafts
                 SET status = ?, error_message = ?, updated_at = ?, reviewed_at = ?
@@ -192,8 +199,14 @@ def create_app(
                 """,
                 (status, reason, now, now, draft_id),
             )
-            if cursor.rowcount == 0:
-                raise HTTPException(404, "Draft not found")
+            if audit_action is not None:
+                log_audit(
+                    conn,
+                    audit_action,
+                    conversation_id=row[0],
+                    draft_id=draft_id,
+                    detail={"reason": reason} if reason else None,
+                )
             conn.commit()
             return {"id": draft_id, "status": status}
         finally:
@@ -201,7 +214,12 @@ def create_app(
 
     @api.post("/api/drafts/{draft_id}/reject")
     def reject_draft(draft_id: str, body: ReasonBody) -> dict[str, Any]:
-        return set_status(draft_id, "rejected", reason=body.reason)
+        return set_status(
+            draft_id,
+            "rejected",
+            reason=body.reason,
+            audit_action="reject",
+        )
 
     @api.post("/api/drafts/{draft_id}/skip")
     def skip_draft(draft_id: str) -> dict[str, Any]:
@@ -224,7 +242,7 @@ def create_app(
             ).fetchone()
             if row is None:
                 raise HTTPException(404, "Draft not found")
-            _, language, raw_snapshot, subject = row
+            conversation_id, language, raw_snapshot, subject = row
             try:
                 snapshot = json.loads(raw_snapshot) if raw_snapshot else {}
             except (TypeError, json.JSONDecodeError):
@@ -255,6 +273,15 @@ def create_app(
                     _now(),
                     draft_id,
                 ),
+            )
+            log_audit(
+                conn,
+                "regenerate",
+                conversation_id=conversation_id,
+                draft_id=draft_id,
+                detail={"instruction": body.instruction}
+                if body.instruction
+                else None,
             )
             conn.commit()
             return {

@@ -100,6 +100,11 @@ def approve_and_send(
         subject,
         language,
     ) = row
+    if current_status != "needs_review":
+        return SendResult(
+            False, current_status, "Draft is not awaiting review"
+        )
+
     draft_created_at = _parse_timestamp(created_at)
     if draft_created_at is None:
         return SendResult(False, current_status, "Draft has an invalid created_at")
@@ -116,15 +121,45 @@ def approve_and_send(
     if final_text is None:
         return SendResult(False, current_status, "Draft has no text to send")
 
-    status = "sent_simulated" if dry_run else "sent"
-    if not dry_run:
-        client.send_message(conversation_id, final_text)
+    now = datetime.now(UTC).isoformat()
+    claim = conn.execute(
+        """
+        UPDATE drafts
+        SET status = 'sending', updated_at = ?, error_message = NULL
+        WHERE id = ? AND status = 'needs_review'
+        """,
+        (now, draft_id),
+    )
+    if claim.rowcount == 0:
+        conn.rollback()
+        return SendResult(
+            False, "conflict", "Draft is no longer awaiting review"
+        )
+    conn.commit()
 
+    if not dry_run:
+        try:
+            client.send_message(conversation_id, final_text)
+        except Exception as exc:
+            error = str(exc) or type(exc).__name__
+            conn.execute(
+                """
+                UPDATE drafts
+                SET status = 'needs_review', error_message = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (error, datetime.now(UTC).isoformat(), draft_id),
+            )
+            conn.commit()
+            return SendResult(False, "needs_review", error)
+
+    status = "sent_simulated" if dry_run else "sent"
     now = datetime.now(UTC).isoformat()
     conn.execute(
         """
         UPDATE drafts
-        SET status = ?, updated_at = ?, reviewed_at = ?, sent_at = ?
+        SET status = ?, updated_at = ?, reviewed_at = ?, sent_at = ?,
+            error_message = NULL
         WHERE id = ?
         """,
         (status, now, now, now, draft_id),

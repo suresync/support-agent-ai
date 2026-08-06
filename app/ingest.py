@@ -175,14 +175,23 @@ def _is_newer(customer_at: str | None, draft_at: str) -> bool:
 
 def sync_once(conn, client, settings) -> SyncStats:
     now = datetime.now(UTC)
-    response = client.list_conversations(
-        status="OPEN",
-        start_date=(now - timedelta(days=7)).date().isoformat(),
-        end_date=now.date().isoformat(),
-        page=1,
-        per_page=50,
-    )
-    conversations = _conversation_list(response)
+    page = 1
+    page_size = 50
+    conversations: list[dict[str, Any]] = []
+    while True:
+        response = client.list_conversations(
+            status="OPEN",
+            start_date=(now - timedelta(days=7)).date().isoformat(),
+            end_date=now.date().isoformat(),
+            page=page,
+            per_page=page_size,
+        )
+        page_conversations = _conversation_list(response)
+        conversations.extend(page_conversations)
+        if len(page_conversations) < page_size:
+            break
+        page += 1
+
     seen = len(conversations)
     upserted = 0
     created = 0

@@ -168,3 +168,49 @@ def test_sync_keeps_active_draft_when_still_fresh(
     assert len(rows) == 1
     assert stats.drafts_created == 0
     assert stats.drafts_skipped == 0
+
+
+def test_sync_paginates_until_short_page(tmp_path, monkeypatch):
+    from app import ingest
+
+    def conversation(number):
+        return {
+            "id": f"conv-{number}",
+            "status": "OPEN",
+            "channel": "email",
+            "messages": [
+                {
+                    "direction": "inbound",
+                    "body": f"Question {number}",
+                    "created_at": "2026-08-06T10:00:00+00:00",
+                }
+            ],
+        }
+
+    class PagedClient:
+        def __init__(self):
+            self.list_calls = []
+
+        def list_conversations(self, **kwargs):
+            self.list_calls.append(kwargs)
+            if kwargs["page"] == 1:
+                return [conversation(number) for number in range(50)]
+            if kwargs["page"] == 2:
+                return [conversation(50)]
+            raise AssertionError("sync should stop after a short page")
+
+    client = PagedClient()
+    conn = init_db(str(tmp_path / "test.db"))
+    monkeypatch.setattr(ingest, "search_similar", lambda *args, **kwargs: [])
+    monkeypatch.setattr(ingest, "load_faq_chunks", lambda *args: [])
+    monkeypatch.setattr(
+        ingest,
+        "generate_draft",
+        lambda **kwargs: DraftResult("Reply", 0.7, None),
+    )
+
+    stats = ingest.sync_once(conn, client, Settings())
+
+    assert stats.conversations_seen == 51
+    assert stats.drafts_created == 51
+    assert [call["page"] for call in client.list_calls] == [1, 2]

@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS drafts (
         status IN (
             'pending_draft',
             'needs_review',
+            'sending',
             'sent',
             'sent_simulated',
             'rejected',
