@@ -305,7 +305,8 @@ textarea:focus-visible,
 }
 
 textarea {
-  width: auto;
+  width: 100%;
+  box-sizing: border-box;
   min-height: 220px;
   padding: 12px;
   resize: vertical;
