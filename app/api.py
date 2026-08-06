@@ -8,6 +8,7 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from app.config import Settings, get_settings
@@ -57,6 +58,8 @@ def create_app(
     api = FastAPI(title="Richpanel Support Agent")
     api.state.settings = resolved_settings
     api.state.client = resolved_client
+    static_path = Path(__file__).resolve().parent / "static"
+    api.mount("/static", StaticFiles(directory=static_path), name="static")
 
     def connection():
         return init_db(resolved_settings.database_path)
@@ -88,6 +91,10 @@ def create_app(
             return [_row_dict(columns, row) for row in rows]
         finally:
             conn.close()
+
+    @api.get("/api/status")
+    def status() -> dict[str, bool]:
+        return {"dry_run": resolved_settings.dry_run}
 
     @api.get("/api/drafts/{draft_id}")
     def draft_detail(draft_id: str) -> dict[str, Any]:
@@ -270,7 +277,7 @@ def create_app(
 
     @api.get("/", response_class=HTMLResponse)
     def dashboard():
-        dashboard_path = Path(__file__).resolve().parent / "static" / "dashboard.html"
+        dashboard_path = static_path / "dashboard.html"
         if dashboard_path.is_file():
             return FileResponse(dashboard_path)
         return HTMLResponse(

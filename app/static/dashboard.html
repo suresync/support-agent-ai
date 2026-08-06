@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Support review queue</title>
+    <link rel="stylesheet" href="/static/dashboard.css">
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">Richpanel support</p>
+        <h1>Review queue</h1>
+      </div>
+      <div class="header-actions">
+        <span id="dry-run-badge" class="status-badge" aria-live="polite">Checking mode…</span>
+        <button id="sync-button" class="button button-secondary" type="button">Sync now</button>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <section class="panel queue-panel" aria-labelledby="queue-heading">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">Inbox</p>
+            <h2 id="queue-heading">Needs review</h2>
+          </div>
+          <span id="queue-count" class="count">0</span>
+        </div>
+        <div id="queue-list" class="queue-list" aria-live="polite">
+          <p class="empty-state">Loading queue…</p>
+        </div>
+      </section>
+
+      <section class="panel transcript-panel" aria-labelledby="transcript-heading">
+        <div class="panel-heading">
+          <div>
+            <p id="conversation-meta" class="eyebrow">Conversation</p>
+            <h2 id="transcript-heading">Select a draft</h2>
+          </div>
+          <span id="language-badge" class="meta-badge" hidden></span>
+        </div>
+        <div id="customer-details" class="customer-details" hidden></div>
+        <div id="transcript" class="transcript">
+          <p class="empty-state">Choose a draft from the queue to view its transcript.</p>
+        </div>
+      </section>
+
+      <section class="panel editor-panel" aria-labelledby="editor-heading">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">Response</p>
+            <h2 id="editor-heading">Draft editor</h2>
+          </div>
+          <span id="confidence-badge" class="meta-badge" hidden></span>
+        </div>
+
+        <label class="field-label" for="draft-editor">Reply text</label>
+        <textarea
+          id="draft-editor"
+          rows="14"
+          placeholder="Select a draft to begin editing"
+          disabled
+        ></textarea>
+        <p id="internal-note" class="internal-note" hidden></p>
+
+        <div class="primary-actions">
+          <button id="approve-button" class="button button-primary" type="button" disabled>
+            Approve &amp; send
+          </button>
+          <button id="save-button" class="button button-secondary" type="button" disabled>Save</button>
+        </div>
+        <div class="secondary-actions">
+          <button id="regenerate-button" class="button button-secondary" type="button" disabled>Regenerate</button>
+          <button id="skip-button" class="button button-quiet" type="button" disabled>Skip</button>
+          <button id="reject-button" class="button button-danger" type="button" disabled>Reject</button>
+        </div>
+
+        <p id="action-status" class="action-status" role="status" aria-live="polite"></p>
+      </section>
+    </main>
+
+    <script src="/static/dashboard.js" defer></script>
+  </body>
+</html>
