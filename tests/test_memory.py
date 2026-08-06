@@ -4,13 +4,17 @@ from app.memory import add_memory, search_similar
 
 def _fake_embed_bow(texts, model_name=None):
     """Bag-of-words stub so overlapping tokens produce higher cosine scores."""
+    import hashlib
+
     import numpy as np
 
+    dims = 256
     out = []
     for t in texts:
-        v = np.zeros(8, dtype=np.float32)
+        v = np.zeros(dims, dtype=np.float32)
         for word in t.lower().split():
-            v[hash(word) % 8] += 1.0
+            idx = int(hashlib.md5(word.encode()).hexdigest(), 16) % dims
+            v[idx] += 1.0
         out.append(v.tobytes())
     return out
 
@@ -26,7 +30,7 @@ def test_search_similar_returns_related_memory(tmp_path, monkeypatch):
     conn = get_connection(path)
     add_memory(
         conn,
-        question_summary="missing yarn cones from order",
+        question_summary="package missing yarn cones order shipment",
         final_reply="We can reship or refund the missing cones.",
         language="en",
         theme_tags=["missing-items"],
@@ -34,7 +38,7 @@ def test_search_similar_returns_related_memory(tmp_path, monkeypatch):
     )
     add_memory(
         conn,
-        question_summary="how to start tufting beginner kit",
+        question_summary="beginner tufting starter gun recommendations",
         final_reply="The AK DUO starter kit is a good choice.",
         language="en",
         theme_tags=["beginner"],
